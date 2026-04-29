@@ -1,0 +1,226 @@
+{% extends "app/base.html" %}
+{% block title %}Reports — AttendAI{% endblock %}
+{% block page_title %}Attendance Reports{% endblock %}
+{% block page_sub %}Filter, analyze and export employee attendance records{% endblock %}
+
+{% block content %}
+<div class="card card-body" style="margin-bottom:22px;">
+  <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;">
+    <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+      <label class="form-label">From Date</label>
+      <input type="date" class="form-input" id="filter-from" />
+    </div>
+    <div class="form-group" style="margin:0;flex:1;min-width:140px;">
+      <label class="form-label">To Date</label>
+      <input type="date" class="form-input" id="filter-to" />
+    </div>
+    <div class="form-group" style="margin:0;flex:1;min-width:160px;">
+      <label class="form-label">Employee ID</label>
+      <input type="text" class="form-input" id="filter-empid" placeholder="e.g. EMP001" />
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary" onclick="loadReports()"><i class="fas fa-magnifying-glass"></i> Search</button>
+      <button class="btn btn-outline" onclick="resetFilters()"><i class="fas fa-rotate-left"></i> Reset</button>
+      <button class="btn btn-outline" onclick="exportCSV()" title="Export CSV"><i class="fas fa-file-csv"></i> Export</button>
+    </div>
+  </div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:22px;">
+  <div class="stat-card emerald"><div class="stat-icon emerald"><i class="fas fa-circle-check"></i></div><div class="stat-value" id="rep-total">—</div><div class="stat-label">Total Records</div></div>
+  <div class="stat-card indigo"><div class="stat-icon indigo"><i class="fas fa-id-badge"></i></div><div class="stat-value" id="rep-unique">—</div><div class="stat-label">Unique Employees</div></div>
+  <div class="stat-card cyan"><div class="stat-icon cyan"><i class="fas fa-calendar-days"></i></div><div class="stat-value" id="rep-days">—</div><div class="stat-label">Unique Days</div></div>
+  <div class="stat-card amber"><div class="stat-icon amber"><i class="fas fa-percent"></i></div><div class="stat-value" id="rep-avg">—</div><div class="stat-label">Avg Confidence</div></div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div class="card-title"><i class="fas fa-table" style="color:var(--indigo);margin-right:8px;"></i>Attendance Records</div>
+      <div class="card-subtitle" id="result-label">Run a search to view records</div>
+    </div>
+    <div style="position:relative;">
+      <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:12px;"></i>
+      <input type="text" id="table-search" class="form-input" placeholder="Filter table..."
+             style="padding-left:32px;width:180px;font-size:13px;padding-top:8px;padding-bottom:8px;"
+             oninput="filterTable()" />
+    </div>
+  </div>
+  <div class="table-wrap" style="border:none;border-radius:0;">
+    <table id="report-table">
+      <thead>
+        <tr>
+          <th style="cursor:pointer;" onclick="sortBy('employee_name')">Employee <i class="fas fa-sort" style="font-size:10px;opacity:0.4;"></i></th>
+          <th style="cursor:pointer;" onclick="sortBy('employee_id')">Employee ID <i class="fas fa-sort" style="font-size:10px;opacity:0.4;"></i></th>
+          <th style="cursor:pointer;" onclick="sortBy('date')">Date <i class="fas fa-sort" style="font-size:10px;opacity:0.4;"></i></th>
+          <th>Time</th>
+          <th>Confidence</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="report-tbody">
+        <tr><td colspan="7"><div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <h3>No records loaded</h3>
+          <p>Use the filters above and click Search</p>
+        </div></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="padding:16px 20px;border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:12.5px;color:var(--text3);" id="pagination-info"></div>
+    <div style="display:flex;gap:6px;" id="pagination-btns"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRecords=[], filteredRecs=[], sortField='date', sortDir=-1, currentPage=1;
+const PAGE_SIZE=20;
+
+(function(){
+  const today=new Date().toISOString().slice(0,10);
+  const monthAgo=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  document.getElementById('filter-from').value=monthAgo;
+  document.getElementById('filter-to').value=today;
+})();
+
+async function loadReports(){
+  const from=document.getElementById('filter-from').value;
+  const to=document.getElementById('filter-to').value;
+  const empid=document.getElementById('filter-empid').value.trim();
+  const tbody=document.getElementById('report-tbody');
+  tbody.innerHTML=Array(5).fill(skeletonRow(7)).join('');
+  try{
+    let url='/api/attendance/?';
+    if(empid) url+=`employee_id=${encodeURIComponent(empid)}&`;
+    allRecords=await apiFetch(url);
+    if(from||to){
+      allRecords=allRecords.filter(r=>{
+        const d=r.date;return(!from||d>=from)&&(!to||d<=to);
+      });
+    }
+    filteredRecs=[...allRecords];currentPage=1;
+    updateSummary();renderTable();
+    document.getElementById('result-label').textContent=
+      `${allRecords.length} record${allRecords.length!==1?'s':''} found`;
+  }catch(e){
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state">
+      <div class="empty-state-icon">⚠️</div><h3>Error</h3><p>${e.message}</p>
+    </div></td></tr>`;
+    showToast('Error',e.message,'error');
+  }
+}
+
+function resetFilters(){
+  const today=new Date().toISOString().slice(0,10);
+  const monthAgo=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  document.getElementById('filter-from').value=monthAgo;
+  document.getElementById('filter-to').value=today;
+  document.getElementById('filter-empid').value='';
+  document.getElementById('table-search').value='';
+  allRecords=filteredRecs=[];renderTable();
+  document.getElementById('result-label').textContent='Filters reset';
+  updateSummary();
+}
+
+function updateSummary(){
+  const r=filteredRecs;
+  document.getElementById('rep-total').textContent=r.length;
+  document.getElementById('rep-unique').textContent=new Set(r.map(x=>x.employee_id)).size;
+  document.getElementById('rep-days').textContent=new Set(r.map(x=>x.date)).size;
+  const confs=r.filter(x=>x.confidence).map(x=>x.confidence);
+  document.getElementById('rep-avg').textContent=confs.length?(confs.reduce((a,b)=>a+b,0)/confs.length).toFixed(1)+'%':'—';
+}
+
+function filterTable(){
+  const q=document.getElementById('table-search').value.toLowerCase();
+  filteredRecs=q?allRecords.filter(r=>
+    r.employee_name.toLowerCase().includes(q)||
+    r.employee_id.toLowerCase().includes(q)||
+    r.date.includes(q)):[...allRecords];
+  currentPage=1;updateSummary();renderTable();
+}
+
+function sortBy(field){
+  if(sortField===field)sortDir*=-1;else{sortField=field;sortDir=1;}
+  filteredRecs.sort((a,b)=>{const av=a[field]||'',bv=b[field]||'';return av<bv?-sortDir:av>bv?sortDir:0;});
+  renderTable();
+}
+
+function renderTable(){
+  const tbody=document.getElementById('report-tbody');
+  const total=filteredRecs.length;
+  const pages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+  currentPage=Math.min(currentPage,pages);
+  const start=(currentPage-1)*PAGE_SIZE;
+  const slice=filteredRecs.slice(start,start+PAGE_SIZE);
+  if(slice.length===0){
+    tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state">
+      <div class="empty-state-icon">📋</div><h3>No records found</h3><p>Try adjusting your filters</p>
+    </div></td></tr>`;
+    document.getElementById('pagination-info').textContent='';
+    document.getElementById('pagination-btns').innerHTML='';return;
+  }
+  tbody.innerHTML=slice.map(r=>{
+    const cc=r.confidence>=85?'var(--emerald)':r.confidence>=70?'var(--amber)':'var(--red)';
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:10px;">
+        <div class="avatar-sm" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${r.employee_name[0]}</div>
+        <span style="font-weight:600;">${r.employee_name}</span>
+      </div></td>
+      <td><span class="tag">${r.employee_id}</span></td>
+      <td style="font-variant-numeric:tabular-nums;">${r.date}</td>
+      <td style="color:var(--text2);font-variant-numeric:tabular-nums;font-size:13px;">${r.time||'—'}</td>
+      <td style="color:${cc};font-weight:600;">${r.confidence?r.confidence.toFixed(1)+'%':'—'}</td>
+      <td><span class="badge badge-${r.status==='present'?'present':'absent'}">
+        <i class="fas fa-${r.status==='present'?'check':'xmark'}"></i> ${r.status}
+      </span></td>
+      <td><button class="btn btn-outline btn-sm btn-icon" onclick="deleteRecord(${r.id})"
+            style="color:var(--red);border-color:rgba(239,68,68,0.25);" title="Delete">
+        <i class="fas fa-trash-can" style="font-size:11px;"></i>
+      </button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('pagination-info').textContent=
+    `Showing ${start+1}–${Math.min(start+PAGE_SIZE,total)} of ${total} records`;
+  const bc=document.getElementById('pagination-btns');
+  let b='';
+  if(currentPage>1)b+=`<button class="btn btn-outline btn-sm" onclick="goPage(${currentPage-1})"><i class="fas fa-chevron-left"></i></button>`;
+  const rs=Math.max(1,currentPage-2),re=Math.min(pages,currentPage+2);
+  for(let p=rs;p<=re;p++)b+=`<button class="btn btn-sm ${p===currentPage?'btn-primary':'btn-outline'}" onclick="goPage(${p})">${p}</button>`;
+  if(currentPage<pages)b+=`<button class="btn btn-outline btn-sm" onclick="goPage(${currentPage+1})"><i class="fas fa-chevron-right"></i></button>`;
+  bc.innerHTML=b;
+}
+function goPage(p){currentPage=p;renderTable();}
+
+async function deleteRecord(id){
+  if(!confirm('Delete this attendance record?'))return;
+  try{
+    await apiFetch(`/api/attendance/${id}`,{method:'DELETE'});
+    showToast('Deleted','Attendance record removed','success');
+    allRecords=allRecords.filter(r=>r.id!==id);
+    filteredRecs=filteredRecs.filter(r=>r.id!==id);
+    updateSummary();renderTable();
+  }catch(e){showToast('Error',e.message,'error');}
+}
+
+function exportCSV(){
+  if(!filteredRecs.length){showToast('No Data','No records to export','warning');return;}
+  const h=['Employee Name','Employee ID','Date','Time','Confidence','Status'];
+  const rows=filteredRecs.map(r=>[r.employee_name,r.employee_id,r.date,r.time||'',r.confidence?r.confidence.toFixed(2):'',r.status]
+    .map(v=>`"${String(v).replace(/"/g,'""')}"`)
+    .join(','));
+  const csv=[h.join(','),...rows].join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`attendance_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  showToast('Exported',`${filteredRecs.length} records saved as CSV`,'success');
+}
+
+loadReports();
+</script>
+{% endblock %}

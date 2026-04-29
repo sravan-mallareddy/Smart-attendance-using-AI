@@ -1,0 +1,139 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR Login — AttendAI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    :root {
+      --indigo:#4f46e5; --purple:#7c3aed; --emerald:#059669; --red:#dc2626;
+      --grad-primary:linear-gradient(135deg,#4f46e5,#7c3aed);
+      --text:#1e293b; --text2:#475569; --text3:#94a3b8;
+      --card-border:#e2e8f0;
+    }
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+    html,body{height:100%;}
+    body{font-family:'Inter',system-ui,sans-serif;background:#f0f4f8;color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh;-webkit-font-smoothing:antialiased;}
+    body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 50% at 20% 20%,rgba(79,70,229,0.08) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 80% 85%,rgba(124,58,237,0.06) 0%,transparent 60%);pointer-events:none;z-index:0;}
+
+    .login-wrap{position:relative;z-index:1;width:100%;max-width:420px;padding:24px;}
+
+    .login-logo{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:32px;}
+    .logo-orb{width:48px;height:48px;background:var(--grad-primary);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 18px rgba(79,70,229,0.35);}
+    .logo-text span{display:block;font-size:22px;font-weight:800;letter-spacing:-0.5px;background:var(--grad-primary);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+    .logo-text small{font-size:11px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:1.2px;}
+
+    .login-card{background:#ffffff;border:1px solid var(--card-border);border-radius:20px;padding:36px;box-shadow:0 4px 32px rgba(0,0,0,0.08);}
+    .login-badge{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--indigo);background:rgba(79,70,229,0.08);border:1px solid rgba(79,70,229,0.18);padding:5px 12px;border-radius:100px;margin-bottom:20px;text-transform:uppercase;letter-spacing:0.8px;}
+    .login-title{font-size:24px;font-weight:800;letter-spacing:-0.5px;margin-bottom:6px;color:var(--text);}
+    .login-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.5;}
+
+    .form-group{margin-bottom:18px;}
+    .form-label{display:block;font-size:12.5px;font-weight:600;color:var(--text2);margin-bottom:8px;letter-spacing:0.2px;}
+    .input-wrap{position:relative;}
+    .input-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:14px;pointer-events:none;}
+    .form-input{width:100%;background:#f8fafc;border:1px solid var(--card-border);border-radius:10px;color:var(--text);font-family:inherit;font-size:14px;padding:12px 14px 12px 40px;transition:border-color 0.2s,box-shadow 0.2s;outline:none;}
+    .form-input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(79,70,229,0.10);background:#ffffff;}
+    .form-input::placeholder{color:var(--text3);}
+    .toggle-pw{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--text3);cursor:pointer;font-size:14px;background:none;border:none;padding:4px;}
+    .toggle-pw:hover{color:var(--text2);}
+
+    .error-box{display:flex;align-items:center;gap:10px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#b91c1c;}
+    .error-box i{color:var(--red);flex-shrink:0;}
+
+    .btn-login{width:100%;background:var(--grad-primary);color:#fff;border:none;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;padding:13px;cursor:pointer;transition:opacity 0.2s,transform 0.15s;margin-top:4px;box-shadow:0 4px 16px rgba(79,70,229,0.28);}
+    .btn-login:hover{opacity:0.92;transform:translateY(-1px);}
+    .btn-login:active{transform:translateY(0);}
+
+    .login-footer{text-align:center;margin-top:24px;font-size:12px;color:var(--text3);}
+    .login-footer a{color:var(--text2);text-decoration:none;font-weight:500;}
+    .login-footer a:hover{color:var(--indigo);}
+    .divider{display:flex;align-items:center;gap:12px;margin:24px 0;}
+    .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--card-border);}
+    .divider span{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;}
+    .shield-note{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text2);background:rgba(5,150,105,0.05);border:1px solid rgba(5,150,105,0.15);border-radius:8px;padding:10px 14px;}
+    .shield-note i{color:var(--emerald);font-size:13px;flex-shrink:0;}
+  </style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-logo">
+    <div class="logo-orb">🎯</div>
+    <div class="logo-text">
+      <span>AttendAI</span>
+      <small>Smart Attendance System</small>
+    </div>
+  </div>
+
+  <div class="login-card">
+    <div class="login-badge"><i class="fas fa-shield-halved"></i> HR Portal</div>
+    <h1 class="login-title">HR Sign In</h1>
+    <p class="login-sub">Access to Reports is restricted to HR personnel only. Please sign in to continue.</p>
+
+    {% if error %}
+    <div class="error-box">
+      <i class="fas fa-circle-exclamation"></i>
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{% url 'hr_login' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label" for="username">Username</label>
+        <div class="input-wrap">
+          <i class="fas fa-user input-icon"></i>
+          <input type="text" id="username" name="username" class="form-input"
+                 placeholder="HR username" autocomplete="username" autofocus required />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <div class="input-wrap">
+          <i class="fas fa-lock input-icon"></i>
+          <input type="password" id="password" name="password" class="form-input"
+                 placeholder="••••••••" autocomplete="current-password" required />
+          <button type="button" class="toggle-pw" onclick="togglePw()" title="Show/hide password">
+            <i class="fas fa-eye" id="pw-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-login">
+        <i class="fas fa-right-to-bracket" style="margin-right:8px;"></i> Sign In to HR Portal
+      </button>
+    </form>
+
+    <div class="divider"><span>security notice</span></div>
+    <div class="shield-note">
+      <i class="fas fa-lock"></i>
+      This section contains confidential attendance data. Unauthorised access is prohibited.
+    </div>
+  </div>
+
+  <div class="login-footer">
+    <a href="/"><i class="fas fa-arrow-left" style="margin-right:5px;font-size:10px;"></i>Back to Dashboard</a>
+  </div>
+</div>
+
+<script>
+  function togglePw() {
+    const input = document.getElementById('password');
+    const eye   = document.getElementById('pw-eye');
+    if (input.type === 'password') {
+      input.type = 'text';
+      eye.className = 'fas fa-eye-slash';
+    } else {
+      input.type = 'password';
+      eye.className = 'fas fa-eye';
+    }
+  }
+</script>
+</body>
+</html>

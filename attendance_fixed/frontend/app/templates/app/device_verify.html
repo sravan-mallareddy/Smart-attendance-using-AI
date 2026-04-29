@@ -1,0 +1,157 @@
+{% extends "app/base.html" %}
+{% block title %}Device Verification — AttendAI{% endblock %}
+{% block page_title %}Device Verification{% endblock %}
+{% block page_sub %}Check whether a laptop belongs to a registered company employee{% endblock %}
+
+{% block extra_head %}
+<style>
+  .verify-card{max-width:560px;margin:0 auto;}
+  .serial-input-wrap{display:flex;gap:10px;align-items:center;}
+  .serial-input-wrap input{font-family:monospace;letter-spacing:1px;font-size:15px;flex:1;}
+  .result-box{display:none;margin-top:24px;border-radius:var(--radius);padding:24px;animation:fadeInUp 0.4s ease;}
+  .result-box.success{background:rgba(16,185,129,0.08);border:1.5px solid rgba(16,185,129,0.35);}
+  .result-box.danger {background:rgba(239,68,68,0.07);border:1.5px solid rgba(239,68,68,0.28);}
+  .result-icon{font-size:48px;margin-bottom:12px;display:block;}
+  .result-title{font-size:18px;font-weight:700;margin-bottom:6px;}
+  .result-rows{font-size:13.5px;line-height:2;margin-top:12px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius-sm);padding:14px 16px;}
+  .scan-hint{background:rgba(79,70,229,0.05);border:1px solid rgba(79,70,229,0.15);border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;color:var(--text2);margin-bottom:20px;}
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+  #loading-spinner{display:none;text-align:center;padding:20px;color:var(--text3);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="verify-card">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title"><i class="fas fa-laptop-code" style="color:var(--indigo);margin-right:8px;"></i>Laptop Serial Number Lookup</div>
+        <div class="card-subtitle">Enter or scan a laptop serial to verify company ownership</div>
+      </div>
+    </div>
+    <div class="card-body">
+
+      <div class="scan-hint">
+        <i class="fas fa-circle-info" style="color:var(--indigo);margin-right:6px;"></i>
+        <strong>How to find the serial number:</strong> On most laptops, the serial is printed on the bottom sticker. You can also scan it with a barcode scanner — just click the field and scan.
+        <br>On Windows: <code>wmic bios get serialnumber</code> &nbsp;|&nbsp; On Mac: <code>System Information → Hardware Overview</code>
+      </div>
+
+      <div class="serial-input-wrap">
+        <input type="text" class="form-input" id="serial-input"
+               placeholder="e.g. C02XG1JQJG5H"
+               style="text-transform:uppercase;"
+               autocomplete="off"
+               onkeydown="if(event.key==='Enter') verifyDevice()" />
+        <button class="btn btn-primary" onclick="verifyDevice()">
+          <i class="fas fa-magnifying-glass"></i> Verify
+        </button>
+        <button class="btn btn-secondary" onclick="clearResult()" title="Clear">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+
+      <div id="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Checking database…</div>
+
+      <div class="result-box success" id="result-success">
+        <span class="result-icon">✅</span>
+        <div class="result-title" id="success-title">Device verified</div>
+        <div id="success-subtitle" style="color:var(--text2);font-size:13.5px;"></div>
+        <div class="result-rows" id="success-rows"></div>
+      </div>
+
+      <div class="result-box danger" id="result-danger">
+        <span class="result-icon">🚫</span>
+        <div class="result-title">Device Not Registered</div>
+        <div id="danger-msg" style="color:var(--text2);font-size:13.5px;margin-bottom:8px;"></div>
+        <div style="font-size:12.5px;color:var(--text3);">
+          This serial is not linked to any employee in the company database.
+          The device may be personal, unregistered, or the serial was entered incorrectly.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Recent verifications (session only) -->
+  <div class="card" style="margin-top:20px;">
+    <div class="card-header">
+      <div class="card-title" style="font-size:14px;"><i class="fas fa-clock-rotate-left" style="color:var(--text3);margin-right:6px;"></i>Recent Lookups <span style="font-size:11px;color:var(--text3);font-weight:400;">(this session)</span></div>
+    </div>
+    <div class="card-body" id="history-list" style="font-size:13px;color:var(--text3);min-height:40px;">
+      No lookups yet.
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "{{ API_BASE }}";
+const history_items = [];
+
+function apiFetch(path, opts={}) {
+  return fetch(API_BASE + path, opts).then(async r => {
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || JSON.stringify(d));
+    return d;
+  });
+}
+
+async function verifyDevice() {
+  const raw = document.getElementById('serial-input').value.trim().toUpperCase();
+  if (!raw) { alert('Please enter a serial number.'); return; }
+
+  document.getElementById('result-success').style.display = 'none';
+  document.getElementById('result-danger').style.display = 'none';
+  document.getElementById('loading-spinner').style.display = 'block';
+
+  try {
+    const data = await apiFetch(`/api/employees/verify-device/${encodeURIComponent(raw)}`);
+    document.getElementById('loading-spinner').style.display = 'none';
+
+    if (data.verified) {
+      document.getElementById('success-title').textContent = `✅ Device belongs to ${data.employee_name}`;
+      document.getElementById('success-subtitle').textContent = data.message;
+      let rows = '';
+      if (data.employee_name)  rows += `<div><b>Name:</b> ${data.employee_name}</div>`;
+      if (data.employee_id)    rows += `<div><b>Employee ID:</b> ${data.employee_id}</div>`;
+      if (data.department)     rows += `<div><b>Department:</b> ${data.department}</div>`;
+      if (data.designation)    rows += `<div><b>Designation:</b> ${data.designation}</div>`;
+      rows += `<div><b>Serial:</b> <code>${data.laptop_serial}</code></div>`;
+      document.getElementById('success-rows').innerHTML = rows;
+      document.getElementById('result-success').style.display = 'block';
+      addHistory(raw, true, data.employee_name);
+    } else {
+      document.getElementById('danger-msg').textContent = data.message;
+      document.getElementById('result-danger').style.display = 'block';
+      addHistory(raw, false, null);
+    }
+  } catch (err) {
+    document.getElementById('loading-spinner').style.display = 'none';
+    document.getElementById('danger-msg').textContent = 'Error: ' + err.message;
+    document.getElementById('result-danger').style.display = 'block';
+  }
+}
+
+function clearResult() {
+  document.getElementById('serial-input').value = '';
+  document.getElementById('result-success').style.display = 'none';
+  document.getElementById('result-danger').style.display = 'none';
+}
+
+function addHistory(serial, verified, name) {
+  const now = new Date().toLocaleTimeString();
+  history_items.unshift({ serial, verified, name, time: now });
+  const list = document.getElementById('history-list');
+  list.innerHTML = history_items.slice(0, 8).map(h =>
+    `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--card-border);">
+      <i class="fas fa-circle" style="font-size:8px;color:${h.verified ? 'var(--emerald)' : '#ef4444'};"></i>
+      <code style="font-size:12.5px;color:var(--text);">${h.serial}</code>
+      <span style="flex:1;color:${h.verified ? 'var(--emerald)' : '#ef4444'};font-size:12.5px;">
+        ${h.verified ? '✅ ' + h.name : '🚫 Not registered'}
+      </span>
+      <span style="color:var(--text3);font-size:11px;">${h.time}</span>
+    </div>`
+  ).join('');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# ── Database ──────────────────────────────────────────────────────────────────
+sqlalchemy==2.0.29
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic==2.6.4
+
+# ── Computer vision & face recognition ───────────────────────────────────────
+deepface==0.0.91
+opencv-python==4.9.0.80
+numpy==1.26.4
+pillow==10.3.0
+scipy==1.13.0
+mtcnn==0.1.1
+
+# ── Keras backend for DeepFace ────────────────────────────────────────────────
+# Use tf-keras (standalone Keras 2 shim) so deepface works with TF 2.16+
+tf-keras>=2.16.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+aiofiles==23.2.1

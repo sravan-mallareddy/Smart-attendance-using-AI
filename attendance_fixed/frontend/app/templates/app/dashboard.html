@@ -1,0 +1,160 @@
+{% extends "app/base.html" %}
+{% block title %}Dashboard — AttendAI{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Real-time overview of today's employee attendance{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card indigo">
+    <div class="stat-icon indigo"><i class="fas fa-id-badge"></i></div>
+    <div class="stat-value" id="total-employees">—</div>
+    <div class="stat-label">Total Employees</div>
+    <div class="stat-change"><i class="fas fa-database" style="font-size:10px"></i> Registered</div>
+  </div>
+  <div class="stat-card emerald">
+    <div class="stat-icon emerald"><i class="fas fa-circle-check"></i></div>
+    <div class="stat-value" id="present-today">—</div>
+    <div class="stat-label">Present Today</div>
+    <div class="stat-change" id="present-pct">— of total</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="fas fa-circle-xmark"></i></div>
+    <div class="stat-value" id="absent-today">—</div>
+    <div class="stat-label">Absent Today</div>
+    <div class="stat-change" id="today-date-label">—</div>
+  </div>
+  <div class="stat-card cyan">
+    <div class="stat-icon cyan"><i class="fas fa-calendar-week"></i></div>
+    <div class="stat-value" id="week-total">—</div>
+    <div class="stat-label">This Week</div>
+    <div class="stat-change">Entries (7 days)</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:22px;align-items:start;">
+  <!-- Today's Attendance Table -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title"><i class="fas fa-list-check" style="color:var(--indigo);margin-right:8px;"></i>Today's Attendance</div>
+        <div class="card-subtitle" id="today-label">Loading...</div>
+      </div>
+      <a href="/attendance/" class="btn btn-primary btn-sm"><i class="fas fa-camera"></i> Mark Now</a>
+    </div>
+    <div class="table-wrap" style="border:none;border-radius:0;">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Employee</th><th>Employee ID</th><th>Time</th><th>Confidence</th><th>Status</th></tr>
+        </thead>
+        <tbody id="today-tbody">
+          <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3);">
+            <div class="spinner" style="margin:0 auto 12px;"></div>Loading...
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Side Panel -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="card card-body" style="text-align:center;">
+      <div class="card-title" style="margin-bottom:20px;"><i class="fas fa-chart-pie" style="color:var(--indigo);margin-right:6px;"></i>Attendance Rate</div>
+      <div style="position:relative;display:inline-block;margin-bottom:14px;">
+        <svg width="130" height="130" viewBox="0 0 130 130">
+          <circle cx="65" cy="65" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="12"/>
+          <circle id="rate-ring" cx="65" cy="65" r="52" fill="none" stroke="url(#ringGrad)" stroke-width="12"
+                  stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+                  transform="rotate(-90 65 65)" style="transition:stroke-dashoffset 1s ease;"/>
+          <defs>
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#10b981"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+          <div id="rate-pct" style="font-size:26px;font-weight:900;letter-spacing:-1px;">—%</div>
+          <div style="font-size:11px;color:var(--text3);">Present</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;gap:20px;font-size:12px;">
+        <div><span style="color:var(--emerald);">●</span> Present</div>
+        <div><span style="color:var(--amber);">●</span> Absent</div>
+      </div>
+    </div>
+
+    <div class="card card-body">
+      <div class="card-title" style="margin-bottom:16px;"><i class="fas fa-bolt" style="color:var(--amber);margin-right:6px;"></i>Quick Actions</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <a href="/attendance/" class="btn btn-primary" style="justify-content:center;"><i class="fas fa-camera"></i> Mark Attendance</a>
+        <a href="/register/" class="btn btn-outline" style="justify-content:center;"><i class="fas fa-user-plus"></i> Register Employee</a>
+        <a href="/reports/" class="btn btn-outline" style="justify-content:center;"><i class="fas fa-chart-bar"></i> View Reports</a>
+      </div>
+    </div>
+
+    <div class="card card-body">
+      <div class="card-title" style="margin-bottom:14px;"><i class="fas fa-clock-rotate-left" style="color:var(--cyan);margin-right:6px;"></i>Recent Activity</div>
+      <div id="activity-feed" style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+        <div style="color:var(--text3);font-size:12px;">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  try {
+    const stats = await apiFetch('/api/attendance/stats');
+    document.getElementById('total-employees').textContent = stats.total_employees;
+    document.getElementById('present-today').textContent   = stats.today_present;
+    document.getElementById('absent-today').textContent    = stats.today_absent;
+    document.getElementById('week-total').textContent      = stats.week_total;
+    const total = stats.total_employees;
+    const pct   = total > 0 ? Math.round((stats.today_present / total) * 100) : 0;
+    document.getElementById('present-pct').textContent   = `${pct}% of total`;
+    const offset = 326.7 - (pct / 100) * 326.7;
+    document.getElementById('rate-ring').setAttribute('stroke-dashoffset', offset);
+    document.getElementById('rate-pct').textContent = pct + '%';
+
+    const today = await apiFetch('/api/attendance/today');
+    document.getElementById('today-label').textContent = `${today.date} · ${today.present} present`;
+    document.getElementById('today-date-label').textContent = today.date;
+
+    const tbody = document.getElementById('today-tbody');
+    if (today.records.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <h3>No attendance yet today</h3>
+        <p>Open Mark Attendance to start the session</p>
+      </div></td></tr>`;
+    } else {
+      tbody.innerHTML = today.records.map((r,i) => `
+        <tr>
+          <td style="color:var(--text3);font-size:12px;">${i+1}</td>
+          <td><div style="display:flex;align-items:center;gap:10px;">
+            <div class="avatar-sm">${r.employee_name[0]}</div>
+            <span style="font-weight:600;">${r.employee_name}</span>
+          </div></td>
+          <td><span class="tag">${r.employee_id}</span></td>
+          <td style="color:var(--text2);font-size:12px;font-variant-numeric:tabular-nums;">${r.time||'—'}</td>
+          <td>${r.confidence?`<span style="color:var(--emerald);font-weight:600;">${r.confidence.toFixed(1)}%</span>`:'—'}</td>
+          <td><span class="badge badge-present"><i class="fas fa-check"></i> Present</span></td>
+        </tr>`).join('');
+
+      document.getElementById('activity-feed').innerHTML = today.records.slice(0,5).map(r=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--card-border);">
+          <div class="avatar-sm" style="width:30px;height:30px;font-size:11px;flex-shrink:0;">${r.employee_name[0]}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.employee_name}</div>
+            <div style="font-size:11px;color:var(--text3);">${r.time||''}</div>
+          </div>
+          <span class="badge badge-present" style="font-size:10px;">✓</span>
+        </div>`).join('');
+    }
+  } catch(e) { showToast('Error', e.message, 'error'); }
+}
+loadDashboard();
+setInterval(loadDashboard, 30000);
+</script>
+{% endblock %}

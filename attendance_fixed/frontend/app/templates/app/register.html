@@ -1,0 +1,559 @@
+{% extends "app/base.html" %}
+{% block title %}Register Employee — AttendAI{% endblock %}
+{% block page_title %}Register Employee{% endblock %}
+{% block page_sub %}Add a new employee and enroll their face for recognition{% endblock %}
+
+{% block extra_head %}
+<style>
+  .upload-zone{border:2px dashed var(--card-border);border-radius:var(--radius);padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.25s ease;position:relative;}
+  .upload-zone:hover,.upload-zone.drag-over{border-color:var(--indigo);background:rgba(99,102,241,0.06);}
+  .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+  .preview-img{width:100%;max-height:300px;object-fit:cover;border-radius:var(--radius-sm);}
+  .cam-preview-wrap{position:relative;border-radius:var(--radius);overflow:hidden;background:#000;aspect-ratio:4/3;}
+  #reg-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+  .step-indicator{display:flex;align-items:center;gap:0;margin-bottom:28px;}
+  .step{display:flex;align-items:center;gap:8px;flex:1;position:relative;}
+  .step:not(:last-child)::after{content:'';flex:1;height:2px;background:var(--card-border);margin:0 12px;}
+  .step:not(:last-child).done::after{background:var(--indigo);}
+  .step-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;background:var(--card);border:2px solid var(--card-border);color:var(--text3);transition:all 0.3s;}
+  .step.active .step-num{background:var(--grad-primary);border-color:transparent;color:#fff;}
+  .step.done   .step-num{background:var(--emerald);border-color:transparent;color:#fff;}
+  .step-label{font-size:12px;color:var(--text3);font-weight:600;}
+  .step.active .step-label{color:var(--text);}
+  .step.done   .step-label{color:var(--emerald);}
+  .success-banner{display:none;text-align:center;padding:40px 20px;animation:fadeInUp 0.5s ease;}
+  /* Success popup overlay */
+  #success-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:none;align-items:center;justify-content:center;padding:16px;animation:fadeOverlay 0.3s ease;}
+  @keyframes fadeOverlay{from{opacity:0;}to{opacity:1;}}
+  #success-modal{background:#fff;border-radius:20px;padding:40px 36px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,0.22);animation:slideUpModal 0.4s cubic-bezier(0.34,1.56,0.64,1);}
+  @keyframes slideUpModal{from{transform:translateY(40px) scale(0.95);opacity:0;}to{transform:none;opacity:1;}}
+  #success-modal .big-check{font-size:72px;color:var(--emerald);margin-bottom:12px;display:block;animation:bounceIn 0.6s cubic-bezier(0.34,1.56,0.64,1);}
+  #success-modal h2{font-size:24px;font-weight:800;letter-spacing:-0.5px;margin-bottom:6px;}
+  #success-modal .emp-details{background:#f8fafc;border:1px solid var(--card-border);border-radius:12px;padding:16px;margin:16px 0;text-align:left;font-size:13.5px;line-height:2;}
+  .success-banner .big-check{font-size:64px;color:var(--emerald);margin-bottom:16px;display:block;animation:bounceIn 0.6s cubic-bezier(0.34,1.56,0.64,1);}
+  @keyframes bounceIn{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}
+  @keyframes fadeInUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+  /* Delete button only visible when preview-wrap is shown */
+  #upload-preview-wrap{display:none;}
+  #upload-delete-btn{position:absolute;top:8px;right:8px;background:rgba(239,68,68,0.92);border:none;color:#fff;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:start;">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title"><i class="fas fa-user-plus" style="color:var(--indigo);margin-right:8px;"></i>New Employee Registration</div>
+        <div class="card-subtitle">Fill in employee details and capture their face photo</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Step Indicator -->
+      <div class="step-indicator">
+        <div class="step active" id="step1"><div class="step-num">1</div><div style="flex:1;"><div class="step-label">Employee Info</div></div></div>
+        <div class="step" id="step2"><div class="step-num">2</div><div style="flex:1;"><div class="step-label">Face Photo</div></div></div>
+        <div class="step" id="step3"><div class="step-num">3</div><div class="step-label">Confirm</div></div>
+      </div>
+
+      <form id="reg-form">
+        <!-- Step 1 -->
+        <div id="form-step1">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Full Name *</label>
+              <input type="text" class="form-input" id="name" placeholder="e.g. Rajesh Kumar" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Employee ID *</label>
+              <input type="text" class="form-input" id="employee_id" placeholder="e.g. EMP001" required />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Email Address</label>
+              <input type="email" class="form-input" id="email" placeholder="employee@company.com" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Department</label>
+              <select class="form-select" id="department">
+                <option value="">Select department</option>
+                <option>Engineering</option>
+                <option>Human Resources</option>
+                <option>Finance</option>
+                <option>Marketing</option>
+                <option>Operations</option>
+                <option>Sales</option>
+                <option>IT</option>
+                <option>Administration</option>
+                <option>Legal</option>
+                <option>Security</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Designation / Role</label>
+            <input type="text" class="form-input" id="designation" placeholder="e.g. Software Engineer, Manager" />
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-laptop" style="color:var(--indigo);margin-right:6px;"></i>Company Laptop Serial Number</label>
+            <input type="text" class="form-input" id="laptop_serial" placeholder="e.g. C02XG1JQJG5H (leave blank if no device assigned)" style="font-family:monospace;letter-spacing:0.5px;" />
+            <small style="color:var(--text3);font-size:11.5px;"><i class="fas fa-info-circle"></i> Used for device ownership verification at security checkpoints</small>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+            <button type="button" class="btn btn-primary" onclick="goToStep2()">Next <i class="fas fa-arrow-right"></i></button>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div id="form-step2" style="display:none;">
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <button type="button" class="btn btn-primary btn-sm" id="tab-upload" onclick="switchTab('upload')"><i class="fas fa-image"></i> Upload Photo</button>
+            <button type="button" class="btn btn-outline btn-sm" id="tab-cam" onclick="switchTab('cam')"><i class="fas fa-camera"></i> Use Webcam</button>
+          </div>
+
+          <!-- Upload panel -->
+          <div id="panel-upload">
+            <!-- Drop zone: shown when no photo selected -->
+            <div class="upload-zone" id="upload-zone">
+              <input type="file" id="file-input" accept="image/*" onchange="handleFileChange(this)" />
+              <i class="fas fa-cloud-arrow-up" style="font-size:36px;color:var(--indigo);opacity:0.6;margin-bottom:12px;display:block;"></i>
+              <div style="font-weight:600;margin-bottom:6px;">Drop photo here or click to browse</div>
+              <div style="font-size:12px;color:var(--text3);">JPG, PNG, WEBP · Clear front-facing photo</div>
+            </div>
+
+            <!-- Preview wrap: hidden until photo is uploaded.
+                 Delete button is INSIDE this wrapper so it only appears with the photo. -->
+            <div id="upload-preview-wrap" style="display:none;margin-top:12px;position:relative;">
+              <img id="preview-img" alt="Preview" style="width:100%;max-height:300px;object-fit:cover;border-radius:var(--radius-sm);display:block;" />
+              <button type="button" id="upload-delete-btn" onclick="deleteUploadedPhoto()" title="Remove photo">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Webcam panel -->
+          <div id="panel-cam" style="display:none;">
+            <div class="cam-preview-wrap" style="position:relative;">
+              <video id="reg-video" autoplay playsinline muted></video>
+              <div id="face-overlay" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);color:#fff;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;"></div>
+            </div>
+            <canvas id="reg-canvas" style="display:none;"></canvas>
+
+            <div id="sample-strip" style="display:flex;gap:8px;margin-top:10px;min-height:58px;align-items:center;">
+              <span style="font-size:12px;color:var(--text3);">Captured samples:</span>
+              <div id="sample-thumbs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+              <span id="sample-count-badge" style="font-size:12px;color:var(--text3);"></span>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="btn btn-outline btn-sm" id="btn-reg-cam" onclick="startRegCam()"><i class="fas fa-play"></i> Start Camera</button>
+              <button type="button" class="btn btn-primary btn-sm" id="btn-capture" onclick="captureFromCam()" style="display:none;"><i class="fas fa-camera"></i> Capture Sample</button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-clear-samples" onclick="clearSamples()" style="display:none;color:var(--red);"><i class="fas fa-trash"></i> Clear</button>
+              <span id="sample-hint" style="font-size:12px;color:var(--text3);display:none;">Capture 1–5 photos from slightly different angles for best recognition.</span>
+            </div>
+            <img class="preview-img" id="cam-preview-img" alt="Captured" style="margin-top:12px;display:none;" />
+          </div>
+
+          <div style="display:flex;justify-content:space-between;margin-top:20px;">
+            <button type="button" class="btn btn-outline" onclick="goToStep1()"><i class="fas fa-arrow-left"></i> Back</button>
+            <button type="button" class="btn btn-primary" onclick="goToStep3()">Next <i class="fas fa-arrow-right"></i></button>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div id="form-step3" style="display:none;">
+          <div id="confirm-preview" style="padding:20px;background:var(--card);border-radius:var(--radius-sm);margin-bottom:18px;"></div>
+          <div id="reg-progress" style="display:none;margin-bottom:16px;">
+            <div style="font-size:13px;color:var(--text2);margin-bottom:8px;" id="reg-progress-text">Processing...</div>
+            <div style="height:4px;background:var(--card);border-radius:4px;overflow:hidden;">
+              <div id="reg-progress-bar" style="height:100%;background:var(--grad-primary);width:0%;transition:width 0.5s ease;border-radius:4px;"></div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <button type="button" class="btn btn-outline" onclick="goToStep2()"><i class="fas fa-arrow-left"></i> Back</button>
+            <button type="submit" class="btn btn-success btn-lg" id="btn-submit"><i class="fas fa-user-check"></i> Register Employee</button>
+          </div>
+        </div>
+      </form>
+
+      <!-- Success (inline fallback) -->
+      <div class="success-banner" id="success-banner">
+        <i class="fas fa-circle-check big-check"></i>
+        <h2 style="font-size:22px;font-weight:800;margin-bottom:8px;">Employee Registered!</h2>
+        <p id="success-name" style="color:var(--text2);margin-bottom:24px;"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="closeSuccessAndReset()"><i class="fas fa-plus"></i> Register Another</button>
+          <a href="/attendance/" class="btn btn-success"><i class="fas fa-camera"></i> Mark Attendance</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Panel -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="card card-body">
+      <div class="card-title" style="margin-bottom:14px;"><i class="fas fa-circle-info" style="color:var(--cyan);margin-right:8px;"></i>Photo Guidelines</div>
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--text2);">
+        <div style="display:flex;gap:10px;"><i class="fas fa-check" style="color:var(--emerald);margin-top:2px;"></i><span>Clear, front-facing photo</span></div>
+        <div style="display:flex;gap:10px;"><i class="fas fa-check" style="color:var(--emerald);margin-top:2px;"></i><span>Good lighting, no backlighting</span></div>
+        <div style="display:flex;gap:10px;"><i class="fas fa-check" style="color:var(--emerald);margin-top:2px;"></i><span>No sunglasses or face coverings</span></div>
+        <div style="display:flex;gap:10px;"><i class="fas fa-check" style="color:var(--emerald);margin-top:2px;"></i><span>Neutral expression, eyes open</span></div>
+        <div style="display:flex;gap:10px;"><i class="fas fa-xmark" style="color:var(--red);margin-top:2px;"></i><span>No group photos or side profiles</span></div>
+      </div>
+    </div>
+    <div class="card card-body">
+      <div class="card-title" style="margin-bottom:14px;"><i class="fas fa-gear" style="color:var(--indigo);margin-right:8px;"></i>AI System Info</div>
+      <div style="font-size:13px;color:var(--text2);line-height:2;">
+        <div><b style="color:var(--text);">Detection</b>: MTCNN / OpenCV</div>
+        <div><b style="color:var(--text);">Recognition</b>: DeepFace Facenet</div>
+        <div><b style="color:var(--text);">Storage</b>: Local SQLite + Disk</div>
+        <div><b style="color:var(--text);">Privacy</b>: 100% on-device</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Registration Success Popup ──────────────────────────────────────────── -->
+<div id="success-overlay" style="display:none;">
+  <div id="success-modal">
+    <span class="big-check"><i class="fas fa-circle-check"></i></span>
+    <h2>Registration Successful! 🎉</h2>
+    <p style="color:var(--text2);font-size:14px;margin-bottom:4px;">Employee has been enrolled in the system.</p>
+    <div class="emp-details" id="modal-emp-details">
+      <!-- filled by JS -->
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px;">
+      <button class="btn btn-primary" onclick="closeSuccessAndReset()"><i class="fas fa-plus"></i> Register Another</button>
+      <a href="/attendance/" class="btn btn-success"><i class="fas fa-camera"></i> Mark Attendance Now</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let capturedBlob = null;
+let regStream    = null;
+let currentTab   = 'upload';
+let camSamples   = [];
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+// Map of elements that need a specific display type (not just '')
+const _displayType={
+  'upload-preview-wrap':'block',
+  'upload-zone':'block',
+  'panel-upload':'block',
+  'panel-cam':'block',
+  'reg-progress':'block',
+  'success-banner':'flex',
+  'reg-form':'block',
+  'cam-preview-img':'block',
+  'sample-hint':'inline',
+  'btn-capture':'inline-flex',
+  'btn-clear-samples':'inline-flex',
+  'btn-reg-cam':'inline-flex',
+  'face-overlay':'block',
+};
+function show(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.style.display=_displayType[id]||'';
+}
+function hide(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.style.display='none';
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function goToStep1(){show('form-step1');hide('form-step2');hide('form-step3');setStepState(1);}
+
+function goToStep2(){
+  const name=document.getElementById('name').value.trim();
+  const eid=document.getElementById('employee_id').value.trim();
+  if(!name||!eid){showToast('Missing Info','Name and Employee ID are required','warning');return;}
+  hide('form-step1');show('form-step2');hide('form-step3');setStepState(2);
+}
+
+function goToStep3(){
+  if(!capturedBlob){showToast('No Photo','Please upload or capture at least one face photo','warning');return;}
+  hide('form-step1');hide('form-step2');show('form-step3');stopRegCam();setStepState(3);
+  const name=document.getElementById('name').value.trim();
+  const eid=document.getElementById('employee_id').value.trim();
+  const dept=document.getElementById('department').value;
+  const desig=document.getElementById('designation').value.trim();
+  const imgSrc=currentTab==='upload'
+    ? document.getElementById('preview-img').src
+    : (camSamples.length>0 ? camSamples[0].dataUrl : '');
+  const sampleInfo = currentTab==='cam' && camSamples.length>1
+    ? `<div style="color:var(--emerald);font-size:12px;"><i class="fas fa-check-circle"></i> ${camSamples.length} face samples captured for better accuracy</div>` : '';
+  document.getElementById('confirm-preview').innerHTML=`
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+      ${imgSrc?`<img src="${imgSrc}" style="width:90px;height:90px;object-fit:cover;border-radius:12px;border:2px solid var(--indigo);" />`:''}
+      <div style="line-height:2;font-size:13.5px;">
+        <div><b style="color:var(--text2);">Name:</b> ${name}</div>
+        <div><b style="color:var(--text2);">Employee ID:</b> ${eid}</div>
+        ${dept?`<div><b style="color:var(--text2);">Department:</b> ${dept}</div>`:''}
+        ${desig?`<div><b style="color:var(--text2);">Designation:</b> ${desig}</div>`:''}
+        ${sampleInfo}
+      </div>
+    </div>`;
+}
+
+function setStepState(active){
+  [1,2,3].forEach(n=>{
+    const el=document.getElementById('step'+n);
+    el.className='step'+(n<active?' done':n===active?' active':'');
+  });
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(tab){
+  currentTab=tab; capturedBlob=null; camSamples=[];
+  document.getElementById('panel-upload').style.display=tab==='upload'?'':'none';
+  document.getElementById('panel-cam').style.display=tab==='cam'?'':'none';
+  document.getElementById('tab-upload').className='btn btn-sm '+(tab==='upload'?'btn-primary':'btn-outline');
+  document.getElementById('tab-cam').className='btn btn-sm '+(tab==='cam'?'btn-primary':'btn-outline');
+  if(tab!=='cam') stopRegCam();
+  // Reset upload UI when switching away and back
+  if(tab==='upload'){
+    hide('upload-preview-wrap');
+    show('upload-zone');
+    document.getElementById('file-input').value='';
+  }
+  renderSampleThumbs();
+}
+
+// ── File upload ──────────────────────────────────────────────────────────────
+function handleFileChange(input){
+  const file=input.files[0];
+  if(!file) return;
+  // Validate it's an image
+  if(!file.type.startsWith('image/')){
+    showToast('Invalid File','Please upload an image file (JPG, PNG, WEBP)','warning');
+    input.value=''; return;
+  }
+  capturedBlob=file;
+  const reader=new FileReader();
+  reader.onerror=()=>{showToast('Read Error','Could not read the image file','error');};
+  reader.onload=e=>{
+    const img=document.getElementById('preview-img');
+    // Clear src first to force browser reload (avoids stale cache)
+    img.src='';
+    img.onerror=()=>showToast('Preview Error','Image loaded but preview failed — file may be corrupted','warning');
+    img.onload=()=>{
+      // Only show preview after image successfully loads
+      hide('upload-zone');
+      show('upload-preview-wrap');
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function deleteUploadedPhoto(){
+  capturedBlob=null;
+  // Clear the image
+  const img=document.getElementById('preview-img');
+  img.src='';
+  // Hide preview wrapper (and thus the delete button), show drop zone
+  hide('upload-preview-wrap');
+  show('upload-zone');
+  // Reset file input so same file can be re-selected
+  document.getElementById('file-input').value='';
+  showToast('Photo Removed','Upload a new photo to continue','info');
+}
+
+// Drag-and-drop support
+const zone=document.getElementById('upload-zone');
+zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag-over');});
+zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+zone.addEventListener('drop',e=>{
+  e.preventDefault(); zone.classList.remove('drag-over');
+  const file=e.dataTransfer.files[0];
+  if(!file) return;
+  // Inject into file input and trigger handler
+  const dt=new DataTransfer(); dt.items.add(file);
+  const fi=document.getElementById('file-input'); fi.files=dt.files;
+  handleFileChange(fi);
+});
+
+// ── Webcam capture (multi-sample) ────────────────────────────────────────────
+async function startRegCam(){
+  try{
+    regStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'user', width:{ideal:1280}, height:{ideal:720}}
+    });
+    const vid=document.getElementById('reg-video');
+    vid.srcObject=regStream;
+    vid.onloadedmetadata=()=>{
+      vid.play();
+      hide('btn-reg-cam');
+      show('btn-capture'); show('btn-clear-samples'); show('sample-hint');
+      setFaceOverlay('Camera ready — position your face and capture','#4ade80');
+    };
+  }catch(e){
+    showToast('Camera Error',e.message,'error');
+  }
+}
+
+function captureFromCam(){
+  const v=document.getElementById('reg-video');
+  if(!v.videoWidth){showToast('Camera','Wait for camera to fully start','warning');return;}
+  const c=document.getElementById('reg-canvas');
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  const dataUrl=c.toDataURL('image/jpeg',0.92);
+  c.toBlob(blob=>{
+    if(camSamples.length===0) capturedBlob=blob;
+    camSamples.push({blob,dataUrl});
+    renderSampleThumbs();
+    const n=camSamples.length;
+    if(n===1) setFaceOverlay('1 sample — capture more angles for better accuracy','#facc15');
+    else if(n<3) setFaceOverlay(`${n} samples — try a slightly different angle`,'#facc15');
+    else setFaceOverlay(`${n} samples — great! You can capture more or click Next`,'#4ade80');
+    showToast('Captured',`Sample ${n} captured${n===1?' — capture more for best accuracy':''}`,'success');
+  },'image/jpeg',0.92);
+}
+
+function renderSampleThumbs(){
+  const container=document.getElementById('sample-thumbs');
+  const badge=document.getElementById('sample-count-badge');
+  container.innerHTML='';
+  camSamples.forEach((s,i)=>{
+    const img=document.createElement('img');
+    img.src=s.dataUrl;
+    img.style.cssText='width:48px;height:48px;object-fit:cover;border-radius:6px;border:2px solid var(--indigo);';
+    img.title=`Sample ${i+1}`;
+    container.appendChild(img);
+  });
+  badge.textContent=camSamples.length>0?`(${camSamples.length})`:'';
+}
+
+function clearSamples(){
+  capturedBlob=null; camSamples=[];
+  renderSampleThumbs();
+  hide('cam-preview-img');
+  setFaceOverlay('Samples cleared — start capturing again','#f87171');
+  setTimeout(()=>setFaceOverlay('',''),2000);
+}
+
+function setFaceOverlay(msg,color){
+  const el=document.getElementById('face-overlay');
+  if(!msg){el.style.display='none';return;}
+  el.style.display='block'; el.style.color=color; el.textContent=msg;
+}
+
+function stopRegCam(){
+  if(regStream){regStream.getTracks().forEach(t=>t.stop());regStream=null;}
+  show('btn-reg-cam');
+  hide('btn-capture'); hide('btn-clear-samples'); hide('sample-hint');
+  const fo=document.getElementById('face-overlay'); if(fo) fo.style.display='none';
+}
+
+// ── Registration submission ──────────────────────────────────────────────────
+document.getElementById('reg-form').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  if(!capturedBlob){showToast('No Photo','Please provide a face photo','warning');return;}
+
+  const btn=document.getElementById('btn-submit');
+  btn.disabled=true; btn.innerHTML='<div class="spinner"></div> Registering...';
+  const prog=document.getElementById('reg-progress');
+  const bar=document.getElementById('reg-progress-bar');
+  const progText=document.getElementById('reg-progress-text');
+  prog.style.display='';
+  let pct=0;
+  const tick=setInterval(()=>{pct=Math.min(pct+5,85);bar.style.width=pct+'%';},400);
+
+  const sampleCount=currentTab==='cam'?camSamples.length:1;
+  progText.textContent=`Extracting face embedding${sampleCount>1?` from ${sampleCount} samples`:''}...`;
+
+  const form=new FormData();
+  form.append('name',document.getElementById('name').value.trim());
+  form.append('employee_id',document.getElementById('employee_id').value.trim());
+  form.append('email',document.getElementById('email').value.trim());
+  form.append('department',document.getElementById('department').value);
+  form.append('designation',document.getElementById('designation').value.trim());
+  const laptopSerial=document.getElementById('laptop_serial').value.trim();
+  if(laptopSerial) form.append('laptop_serial',laptopSerial);
+  form.append('image',capturedBlob,'face.jpg');
+
+  if(currentTab==='cam' && camSamples.length>1){
+    form.append('extra_images',JSON.stringify(camSamples.slice(1).map(s=>s.dataUrl)));
+  }
+
+  try{
+    // Use apiFetch (defined in base.html) so API_BASE is always applied correctly
+    const data=await apiFetch('/api/employees/register',{method:'POST',body:form});
+    clearInterval(tick); bar.style.width='100%';
+    progText.textContent='Done!';
+    setTimeout(()=>{
+      // Show prominent popup modal with full employee details
+      showSuccessPopup(data);
+    },600);
+  }catch(err){
+    clearInterval(tick); prog.style.display='none';
+    btn.disabled=false; btn.innerHTML='<i class="fas fa-user-check"></i> Register Employee';
+    showToast('Registration Failed',err.message,'error');
+  }
+});
+
+// ── Success Popup ─────────────────────────────────────────────────────────────
+function showSuccessPopup(data){
+  const overlay=document.getElementById('success-overlay');
+  const details=document.getElementById('modal-emp-details');
+  // Build detail rows
+  let rows=`
+    <div><b style="color:var(--text2);">Name:</b> ${data.name}</div>
+    <div><b style="color:var(--text2);">Employee ID:</b> ${data.employee_id}</div>`;
+  if(data.department) rows+=`<div><b style="color:var(--text2);">Department:</b> ${data.department}</div>`;
+  if(data.designation) rows+=`<div><b style='color:var(--text2);'>Designation:</b> ${data.designation}</div>`;
+  if(data.laptop_serial) rows+=`<div><b style='color:var(--text2);'><i class='fas fa-laptop'></i> Device Serial:</b> <code>${data.laptop_serial}</code></div>`;
+  if(data.email) rows+=`<div><b style="color:var(--text2);">Email:</b> ${data.email}</div>`;
+  rows+=`<div style="color:var(--emerald);margin-top:4px;"><i class="fas fa-circle-check"></i> Face enrolled successfully</div>`;
+  details.innerHTML=rows;
+  overlay.style.display='flex';
+  // Also update inline success banner in case popup is closed
+  hide('reg-form');
+  document.getElementById('success-banner').style.display='flex';
+  document.getElementById('success-name').textContent=
+    `${data.name} (${data.employee_id}) has been successfully registered.`;
+  // Show toast too
+  showToast('Registration Complete',`${data.name} enrolled successfully!`,'success',6000);
+}
+
+function closeSuccessAndReset(){
+  document.getElementById('success-overlay').style.display='none';
+  resetForm();
+}
+
+// Close overlay on background click
+document.getElementById('success-overlay').addEventListener('click',function(e){
+  if(e.target===this) closeSuccessAndReset();
+});
+
+// ── Reset ────────────────────────────────────────────────────────────────────
+function resetForm(){
+  stopRegCam();
+  show('reg-form');
+  hide('success-banner');
+  hide('success-overlay');
+  document.getElementById('reg-form').reset();
+  // Reset upload panel
+  hide('upload-preview-wrap');
+  show('upload-zone');
+  const pi=document.getElementById('preview-img');
+  pi.src=''; pi.removeAttribute('src');
+  // Reset webcam panel
+  hide('cam-preview-img');
+  hide('reg-progress');
+  hide('btn-capture'); hide('btn-clear-samples'); hide('sample-hint');
+  show('btn-reg-cam');
+  capturedBlob=null; camSamples=[]; currentTab='upload';
+  renderSampleThumbs();
+  goToStep1();
+}
+</script>
+{% endblock %}

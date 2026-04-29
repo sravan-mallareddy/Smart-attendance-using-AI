@@ -1,0 +1,343 @@
+{% extends "app/base.html" %}
+{% block title %}Mark Attendance — AttendAI{% endblock %}
+{% block page_title %}Mark Attendance{% endblock %}
+{% block page_sub %}Live face recognition — point your camera at the employee{% endblock %}
+
+{% block extra_head %}
+<style>
+  .cam-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--radius);overflow:hidden;}
+  #video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1);}
+  .face-box{position:absolute;border:2.5px solid var(--emerald);border-radius:8px;box-shadow:0 0 20px rgba(16,185,129,0.5);display:none;}
+  .scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--emerald),transparent);animation:scanDown 2s linear infinite;opacity:0;}
+  .scanning .scan-line{opacity:1;}
+  @keyframes scanDown{0%{top:10%;}100%{top:90%;}}
+  .viewfinder{position:absolute;top:50%;left:50%;transform:translate(-50%,-58%);width:200px;height:200px;}
+  .vf-corner{position:absolute;width:30px;height:30px;border-color:rgba(99,102,241,0.7);border-style:solid;}
+  .vf-corner.tl{top:0;left:0;border-width:3px 0 0 3px;border-radius:6px 0 0 0;}
+  .vf-corner.tr{top:0;right:0;border-width:3px 3px 0 0;border-radius:0 6px 0 0;}
+  .vf-corner.bl{bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 6px;}
+  .vf-corner.br{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 6px 0;}
+  .cam-status{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:100px;font-size:13px;font-weight:600;backdrop-filter:blur(12px);white-space:nowrap;transition:all 0.3s ease;}
+  .cam-status.idle{background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);color:var(--text2);}
+  .cam-status.scanning{background:rgba(99,102,241,0.3);border:1px solid rgba(99,102,241,0.5);color:#c7d2fe;}
+  .cam-status.success{background:rgba(16,185,129,0.3);border:1px solid rgba(16,185,129,0.5);color:#6ee7b7;}
+  .cam-status.fail{background:rgba(239,68,68,0.25);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;}
+  .cam-status.warning{background:rgba(245,158,11,0.25);border:1px solid rgba(245,158,11,0.4);color:#fde68a;}
+  .result-card{padding:20px;border-radius:var(--radius-sm);display:none;animation:fadeIn 0.4s ease;}
+  .result-card.show{display:block;}
+  .result-card.success{background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);}
+  .result-card.fail{background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);}
+  .result-card.warning{background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:24px;align-items:start;">
+
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title"><i class="fas fa-camera" style="color:var(--indigo);margin-right:8px;"></i>Live Camera Feed</div>
+        <div class="card-subtitle">Auto-scans every 4 seconds when active</div>
+      </div>
+      <button class="btn btn-outline btn-sm" id="btn-flip" title="Flip camera"><i class="fas fa-rotate"></i></button>
+    </div>
+    <div class="card-body" style="padding:16px;">
+      <div class="cam-wrap" id="cam-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="scan-line" id="scan-line"></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+          <div class="viewfinder">
+            <div class="vf-corner tl"></div><div class="vf-corner tr"></div>
+            <div class="vf-corner bl"></div><div class="vf-corner br"></div>
+          </div>
+        </div>
+        <div class="cam-status idle" id="cam-status"><i class="fas fa-circle-stop"></i>&nbsp; Camera Off</div>
+      </div>
+      <canvas id="canvas" style="display:none;"></canvas>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary" id="btn-start" style="flex:1;"><i class="fas fa-play"></i> Start Camera</button>
+        <button class="btn btn-danger btn-sm" id="btn-stop" style="display:none;"><i class="fas fa-stop"></i> Stop</button>
+        <button class="btn btn-success btn-sm" id="btn-manual" style="display:none;" title="Scan now"><i class="fas fa-bolt"></i> Scan Now</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="card card-body">
+      <div class="card-title" style="margin-bottom:14px;"><i class="fas fa-id-badge" style="color:var(--cyan);margin-right:8px;"></i>Recognition Result</div>
+      <div id="result-idle" style="text-align:center;padding:24px 0;color:var(--text3);">
+        <i class="fas fa-face-smile" style="font-size:40px;opacity:0.2;display:block;margin-bottom:12px;"></i>
+        <div style="font-size:13px;">Start the camera to begin recognition</div>
+      </div>
+      <div class="result-card" id="result-card">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <div id="result-avatar" class="avatar-sm" style="width:52px;height:52px;font-size:22px;border-radius:14px;"></div>
+          <div>
+            <div id="result-name" style="font-size:18px;font-weight:800;letter-spacing:-0.4px;"></div>
+            <div id="result-empid" style="font-size:13px;color:var(--text2);margin-top:2px;"></div>
+          </div>
+        </div>
+        <div id="result-msg" style="font-size:13.5px;margin-bottom:12px;"></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span id="result-badge" class="badge"></span>
+          <span id="result-conf" style="font-size:12px;color:var(--text3);"></span>
+        </div>
+      </div>
+      <div class="result-card" id="result-fail">
+        <div id="fail-icon" style="font-weight:600;margin-bottom:6px;color:var(--red);"><i class="fas fa-circle-xmark"></i> Not Recognized</div>
+        <div id="fail-msg" style="font-size:13px;color:var(--text2);"></div>
+        <div style="margin-top:12px;">
+          <a href="/register/" class="btn btn-outline btn-sm"><i class="fas fa-user-plus"></i> Register Employee</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-history" style="color:var(--emerald);margin-right:8px;"></i>Today's Log</div>
+        <span class="badge badge-info" id="log-count">0</span>
+      </div>
+      <div id="today-log" style="max-height:320px;overflow-y:auto;">
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;">No records yet today</div>
+      </div>
+    </div>
+
+    <div class="card card-body" style="font-size:13px;color:var(--text2);">
+      <div style="font-weight:700;margin-bottom:10px;color:var(--text);"><i class="fas fa-lightbulb" style="color:var(--amber);margin-right:6px;"></i>Tips for Best Results</div>
+      <ul style="padding-left:18px;line-height:2;">
+        <li>Ensure good lighting on the face</li>
+        <li>Look directly at the camera</li>
+        <li>Stay still for 2–3 seconds</li>
+        <li>Remove glasses if recognition fails</li>
+        <li>Register with a clear front-facing photo</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let stream=null,autoInterval=null,isScanning=false,mirrored=true,useFrontCam=true;
+const SESSION_KEY='sess_'+Math.random().toString(36).slice(2);
+const video=document.getElementById('video'),canvas=document.getElementById('canvas');
+const camWrap=document.getElementById('cam-wrap'),scanLine=document.getElementById('scan-line');
+const camStatus=document.getElementById('cam-status');
+const btnStart=document.getElementById('btn-start'),btnStop=document.getElementById('btn-stop');
+const btnManual=document.getElementById('btn-manual'),btnFlip=document.getElementById('btn-flip');
+
+// Detect mobile for adjusted scan interval (mobile needs more warm-up time)
+const isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const SCAN_INTERVAL = isMobile ? 5000 : 4000;  // slightly longer on mobile
+const WARMUP_MS     = isMobile ? 2500 : 1500;  // more warm-up on mobile cameras
+
+btnStart.addEventListener('click',startCamera);
+btnStop.addEventListener('click',stopCamera);
+btnManual.addEventListener('click',()=>scanFace());
+
+// Flip button: toggles between front/back camera on mobile, mirrors on desktop
+btnFlip.addEventListener('click',async()=>{
+  if(isMobile && stream){
+    // Toggle between front and back camera on mobile
+    useFrontCam=!useFrontCam;
+    stopCamera();
+    await startCamera();
+  }else{
+    // Desktop: just mirror the video display
+    mirrored=!mirrored;
+    video.style.transform=mirrored?'scaleX(-1)':'scaleX(1)';
+  }
+});
+
+async function startCamera(){
+  try{
+    // Request camera with appropriate facing mode
+    const constraints={
+      video:{
+        facingMode: useFrontCam ? 'user' : {exact:'environment'},
+        width:{ideal:1280},
+        height:{ideal:720}
+      }
+    };
+    // Fallback: if environment cam fails, try without exact constraint
+    try{
+      stream=await navigator.mediaDevices.getUserMedia(constraints);
+    }catch(e){
+      if(!useFrontCam){
+        // Back camera exact constraint failed — try without exact
+        stream=await navigator.mediaDevices.getUserMedia({
+          video:{facingMode:'environment', width:{ideal:1280}, height:{ideal:720}}
+        });
+      }else{
+        throw e;
+      }
+    }
+    video.srcObject=stream;
+    // Mirror front camera, do NOT mirror back camera
+    mirrored=useFrontCam;
+    video.style.transform=mirrored?'scaleX(-1)':'scaleX(1)';
+
+    btnStart.style.display='none';
+    setStatus('scanning','<i class="fas fa-spinner fa-spin"></i>&nbsp; Starting camera...');
+    video.onloadedmetadata=()=>{
+      video.play().then(()=>{
+        btnStop.style.display=btnManual.style.display='inline-flex';
+        setStatus('scanning','<i class="fas fa-circle-dot fa-beat"></i>&nbsp; Scanning...');
+        camWrap.classList.add('scanning');
+        // Give warm-up time for auto-exposure/focus (more on mobile), then scan
+        setTimeout(()=>{if(stream) autoInterval=setInterval(scanFace,SCAN_INTERVAL);},WARMUP_MS);
+      });
+    };
+  }catch(e){
+    btnStart.style.display='inline-flex';
+    setStatus('idle','<i class="fas fa-circle-stop"></i>&nbsp; Camera Off');
+    showToast('Camera Error',e.message,'error');
+  }
+}
+
+function stopCamera(){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  clearInterval(autoInterval); autoInterval=null;
+  video.srcObject=null;
+  btnStart.style.display='inline-flex';
+  btnStop.style.display=btnManual.style.display='none';
+  setStatus('idle','<i class="fas fa-circle-stop"></i>&nbsp; Camera Off');
+  camWrap.classList.remove('scanning');
+}
+
+function setStatus(cls,html){camStatus.className='cam-status '+cls;camStatus.innerHTML=html;}
+
+async function scanFace(){
+  if(isScanning||!stream) return;
+  if(!video.videoWidth||video.readyState<2) return;
+
+  isScanning=true;
+  setStatus('scanning','<i class="fas fa-spinner fa-spin"></i>&nbsp; Analyzing...');
+
+  canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
+  const ctx=canvas.getContext('2d');
+  // IMPORTANT: always draw the NATURAL (un-mirrored) video to canvas.
+  // The CSS mirror is only for display — the backend needs the real orientation.
+  // If using front camera (mirrored display), flip canvas back to natural.
+  if(mirrored){
+    ctx.save();
+    ctx.scale(-1,1);
+    ctx.drawImage(video,-canvas.width,0,canvas.width,canvas.height);
+    ctx.restore();
+  }else{
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  }
+  // Use slightly lower JPEG quality on mobile to reduce payload size
+  const quality=isMobile?0.85:0.92;
+  const b64=canvas.toDataURL('image/jpeg',quality);
+
+  try{
+    const res=await apiFetch('/api/recognize',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:b64,session_key:SESSION_KEY})
+    });
+    handleResult(res);
+  }catch(e){
+    setStatus('fail','<i class="fas fa-triangle-exclamation"></i>&nbsp; Connection Error');
+    showToast('Recognition Error',e.message,'error');
+    setTimeout(()=>{if(stream) setStatus('scanning','<i class="fas fa-circle-dot fa-beat"></i>&nbsp; Scanning...');},3000);
+  }finally{isScanning=false;}
+}
+
+function handleResult(res){
+  const idle=document.getElementById('result-idle');
+  const card=document.getElementById('result-card');
+  const fail=document.getElementById('result-fail');
+  idle.style.display='none';
+  card.classList.remove('show');
+  fail.classList.remove('show');
+
+  if(res.recognized){
+    card.className='result-card show '+(res.attendance_marked?'success':'warning');
+    document.getElementById('result-avatar').textContent=res.employee_name[0];
+    document.getElementById('result-name').textContent=res.employee_name;
+    document.getElementById('result-empid').textContent='ID: '+res.employee_id;
+    document.getElementById('result-msg').textContent=res.message;
+    const badge=document.getElementById('result-badge');
+    if(res.attendance_marked){
+      badge.className='badge badge-present'; badge.textContent='✓ Marked Present';
+      setStatus('success','<i class="fas fa-circle-check"></i>&nbsp; '+res.employee_name);
+      showToast('✓ Attendance Marked',res.message,'success',5000);
+      loadTodayLog();
+      // Resume scanning after a brief pause
+      setTimeout(()=>{if(stream) setStatus('scanning','<i class="fas fa-circle-dot fa-beat"></i>&nbsp; Scanning...');},3000);
+    }else if(res.already_marked){
+      badge.className='badge badge-amber'; badge.textContent='⚡ Already Marked Today';
+      setStatus('scanning','<i class="fas fa-circle-dot fa-beat"></i>&nbsp; Scanning...');
+      // Don't toast for already-marked to avoid spam on auto-scan
+    }else{
+      badge.className='badge badge-amber'; badge.textContent='⚡ Already Marked';
+      setStatus('scanning','<i class="fas fa-circle-dot fa-beat"></i>&nbsp; Scanning...');
+    }
+    document.getElementById('result-conf').textContent=
+      res.confidence?`Confidence: ${res.confidence.toFixed(1)}%`:'';
+  }else{
+    const lower=(res.message||'').toLowerCase();
+    let failTitle='<i class="fas fa-circle-xmark"></i> Not Recognized';
+    let hint='';
+
+    if(lower.includes('confidence too low')||lower.includes('scan again')){
+      // Low-confidence → scan again prompt
+      failTitle='<i class="fas fa-rotate-right"></i> Low Confidence — Scan Again';
+      fail.className='result-card show warning';
+      setStatus('warning','<i class="fas fa-rotate-right"></i>&nbsp; Scan Again');
+    }else if(lower.includes('liveness')||lower.includes('phone')||lower.includes('printed')||lower.includes('smooth')){
+      // Anti-spoofing rejection
+      failTitle='<i class="fas fa-shield-halved"></i> Live Face Required';
+      hint=' Use your actual face in front of the webcam.';
+      fail.className='result-card show fail';
+      setStatus('fail','<i class="fas fa-shield-halved"></i>&nbsp; Spoofing Detected');
+      showToast('Anti-Spoofing Alert',res.message,'warning');
+    }else if(lower.includes('no face')||lower.includes('not detected')){
+      hint=' Ensure your face is clearly visible and well-lit.';
+      fail.className='result-card show fail';
+      setStatus('fail','<i class="fas fa-face-frown"></i>&nbsp; No Face Detected');
+    }else if(lower.includes('no registered')||lower.includes('register first')){
+      hint=' Please register employees first.';
+      fail.className='result-card show fail';
+      setStatus('fail','<i class="fas fa-face-frown"></i>&nbsp; Not Recognized');
+    }else{
+      hint=' Try re-registering with more face samples.';
+      fail.className='result-card show fail';
+      setStatus('fail','<i class="fas fa-face-frown"></i>&nbsp; Not Recognized');
+    }
+
+    document.getElementById('fail-icon').innerHTML=failTitle;
+    document.getElementById('fail-msg').textContent=(res.message||'Face not recognized')+hint;
+    setTimeout(()=>{if(stream) setStatus('scanning','<i class="fas fa-circle-dot fa-beat"></i>&nbsp; Scanning...');},3000);
+  }
+}
+
+async function loadTodayLog(){
+  try{
+    const data=await apiFetch('/api/attendance/today');
+    const el=document.getElementById('today-log');
+    document.getElementById('log-count').textContent=data.records.length;
+    if(data.records.length===0){
+      el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px;">No records yet today</div>';
+      return;
+    }
+    el.innerHTML=data.records.map(r=>`
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--card-border);">
+        <div class="avatar-sm" style="width:34px;height:34px;font-size:13px;flex-shrink:0;">${r.employee_name[0]}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.employee_name}</div>
+          <div style="font-size:11px;color:var(--text3);">${r.employee_id} &bull; ${r.time||''}</div>
+        </div>
+        <span class="badge badge-present" style="font-size:10px;">✓</span>
+      </div>`).join('');
+  }catch(e){
+    console.warn('Could not load today log:',e.message);
+  }
+}
+loadTodayLog();
+</script>
+{% endblock %}
